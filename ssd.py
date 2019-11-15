@@ -42,6 +42,7 @@ class SSD(nn.Module):
 
         self.loc = nn.ModuleList(head[0])
         self.conf = nn.ModuleList(head[1])
+        self.relu = nn.ReLU(inplace=True)
 
         if phase == 'test':
             self.softmax = nn.Softmax(dim=-1)
@@ -66,9 +67,9 @@ class SSD(nn.Module):
                     2: localization layers, Shape: [batch,num_priors*4]
                     3: priorbox layers, Shape: [2,num_priors*4]
         """
-        sources = list()
-        loc = list()
-        conf = list()
+        sources = list() #  这个列表存储的是参与预测的卷积层的输出, 也就是原文中那6个指定的卷积层
+        loc = list() #  用于存储预测的边框信息
+        conf = list() # 用于存储预测的类别信息
 
         # apply vgg up to conv4_3 relu
         for k in range(23):
@@ -86,16 +87,23 @@ class SSD(nn.Module):
         for k, v in enumerate(self.extras):
             x = F.relu(v(x), inplace=True)
             if k % 2 == 1:
+                # 在extras_layers中, 第1,3,5,7,9(从第0开始)的卷积层的输出会用于预测box位置和类别,
+                #  因此, 将其添加到 sources列表中
                 sources.append(x)
 
         # apply multibox head to source layers
         for (x, l, c) in zip(sources, self.loc, self.conf):
+            # permute重新排列维度顺序, PyTorch维度的默认排列顺序为 (N, C, H, W),
+            # 因此, 这里的排列是将其改为 (N, H, W, C).
             loc.append(l(x).permute(0, 2, 3, 1).contiguous())
             conf.append(c(x).permute(0, 2, 3, 1).contiguous())
 
+        # 将除batch以外的其他维度合并, 因此, 对于边框坐标来说, 最终的shape为(两维):[batch, num_boxes*4]
         loc = torch.cat([o.view(o.size(0), -1) for o in loc], 1)
+        # 同理, 最终的shape为(两维):[batch, num_boxes*num_classes]
         conf = torch.cat([o.view(o.size(0), -1) for o in conf], 1)
         if self.phase == "test":
+            # 这里用到了 detect 对象, 该对象主要由于接预测出来的结果进行解析, 以获得方便可视化的边框坐标和类别编号.
             output = self.detect(
                 loc.view(loc.size(0), -1, 4),                   # loc preds
                 self.softmax(conf.view(conf.size(0), -1,
@@ -123,7 +131,12 @@ class SSD(nn.Module):
 
 # This function is derived from torchvision VGG make_layers()
 # https://github.com/pytorch/vision/blob/master/torchvision/models/vgg.py
-def vgg(cfg, i, batch_norm=False):
+def vgg(cfg, i, batch_norm = False):
+    """
+    base_cfg = {
+    '300': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
+            512, 512, 512],}
+    """
     layers = []
     in_channels = i
     for v in cfg:
@@ -132,7 +145,7 @@ def vgg(cfg, i, batch_norm=False):
         elif v == 'C':
             layers += [nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True)]
         else:
-            conv2d = nn.Conv2d(in_channels, v, kernel_size=3, padding=1)
+            conv2d = nn.Conv2d(in_channels=in_channels, out_channels=v, kernel_size=3, padding=1)
             if batch_norm:
                 layers += [conv2d, nn.BatchNorm2d(v), nn.ReLU(inplace=True)]
             else:
@@ -141,29 +154,46 @@ def vgg(cfg, i, batch_norm=False):
     pool5 = nn.MaxPool2d(kernel_size=3, stride=1, padding=1)
     conv6 = nn.Conv2d(512, 1024, kernel_size=3, padding=6, dilation=6)
     conv7 = nn.Conv2d(1024, 1024, kernel_size=1)
-    layers += [pool5, conv6,
-               nn.ReLU(inplace=True), conv7, nn.ReLU(inplace=True)]
+    layers += [pool5, conv6, nn.ReLU(inplace=True), conv7, nn.ReLU(inplace=True)]
     return layers
 
 
+
 def add_extras(cfg, i, batch_norm=False):
-    # Extra layers added to VGG for feature scaling
+    """
+    向VGG网络中添加额外的层用于feature scaling。
+    extras_cfg = {
+    '300': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
+    '512': [],}
+    """
     layers = []
     in_channels = i
     flag = False
+    ## 这里 kernel_size =3 和 kernel_size =1 交替表变换，
+    ## 使用 flag 来控制
     for k, v in enumerate(cfg):
         if in_channels != 'S':
-            if v == 'S':
-                layers += [nn.Conv2d(in_channels, cfg[k + 1],
-                           kernel_size=(1, 3)[flag], stride=2, padding=1)]
+            if v == 'S': # (1,3)[True] = 3, (1,3)[False] = 1
+                layers += [nn.Conv2d(in_channels=in_channels, out_channels=cfg[k+1],
+                                    kernel_size=(1, 3)[flag], stride=2, padding=1)]
             else:
-                layers += [nn.Conv2d(in_channels, v, kernel_size=(1, 3)[flag])]
+                layers += [nn.Conv2d(in_channels=in_channels, out_channels=v,
+                                    kernel_size=(1, 3)[flag])]
             flag = not flag
         in_channels = v
     return layers
 
 
+
 def multibox(vgg, extra_layers, cfg, num_classes):
+    """
+    multibox(...) 总共有4个参数, 现在我们已经得到了两个参数, 分别是vgg(...)
+    函数返回的layers, 以及add_extras(...)函数返回的layers, 后面两个参数根据
+    调用语句可知分别为mbox[str(size)](mbox['300'])和num_classes(默认为21). 
+    mbox_cfg = {
+    '300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location
+    '512': [],}
+    """
     loc_layers = []
     conf_layers = []
     vgg_source = [21, -2]
@@ -173,11 +203,13 @@ def multibox(vgg, extra_layers, cfg, num_classes):
         conf_layers += [nn.Conv2d(vgg[v].out_channels,
                         cfg[k] * num_classes, kernel_size=3, padding=1)]
     for k, v in enumerate(extra_layers[1::2], 2):
+        # 以步长为2在一个list列表中取 extra_layers 的 1，3,5,7,9层
         loc_layers += [nn.Conv2d(v.out_channels, cfg[k]
                                  * 4, kernel_size=3, padding=1)]
         conf_layers += [nn.Conv2d(v.out_channels, cfg[k]
                                   * num_classes, kernel_size=3, padding=1)]
     return vgg, extra_layers, (loc_layers, conf_layers)
+
 
 
 base = {
