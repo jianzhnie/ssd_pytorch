@@ -1,19 +1,20 @@
-from data import *
-from utils.augmentations import SSDAugmentation
-from layers.modules import MultiBoxLoss
-from ssd import build_ssd
 import os
 import sys
 import time
+import numpy as np
+import argparse
 import torch
-from torch.autograd import Variable
 import torch.nn as nn
 import torch.optim as optim
+from torch.autograd import Variable
 import torch.backends.cudnn as cudnn
 import torch.nn.init as init
 import torch.utils.data as data
-import numpy as np
-import argparse
+from data import *
+from utils.augmentations import SSDAugmentation
+from layers.modules import MultiBoxLoss
+from models.ssd import build_ssd
+from layers.functions.prior_box import PriorBox
 
 
 def str2bool(v):
@@ -25,7 +26,7 @@ parser = argparse.ArgumentParser(
 train_set = parser.add_mutually_exclusive_group()
 parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO'],
                     type=str, help='VOC or COCO')
-parser.add_argument('--dataset_root', default=VOC_ROOT,
+parser.add_argument('--dataset_root', default='',
                     help='Dataset root directory path')
 parser.add_argument('--basenet', default='vgg16_reducedfc.pth',
                     help='Pretrained base model')
@@ -69,22 +70,14 @@ if not os.path.exists(args.save_folder):
 
 
 def train():
-    # if args.dataset == 'COCO':
-    #     if args.dataset_root == VOC_ROOT:
-    #         if not os.path.exists(COCO_ROOT):
-    #             parser.error('Must specify dataset_root if specifying dataset')
-    #         print("WARNING: Using default COCO dataset_root because " +
-    #               "--dataset_root was not specified.")
-    #         args.dataset_root = COCO_ROOT
-    #     cfg = coco
-    #     dataset = COCODetection(root=args.dataset_root,
-    #                             transform=SSDAugmentation(cfg['min_dim'],
-    #                                                       MEANS))
+    if args.dataset == 'COCO':
+        cfg = coco
+        dataset = COCODetection(root=cfg['coco_root'],
+                                transform=SSDAugmentation(cfg['min_dim'],
+                                                          MEANS))
     if args.dataset == 'VOC':
-        # if args.dataset_root == COCO_ROOT:
-        #parser.error('Must specify dataset if specifying dataset_root')
         cfg = voc
-        dataset = VOCDetection(root=args.dataset_root,
+        dataset = VOCDetection(root=cfg['voc_root'],
                                transform=SSDAugmentation(cfg['min_dim'],
                                                          MEANS))
 
@@ -122,6 +115,11 @@ def train():
     criterion = MultiBoxLoss(cfg['num_classes'], 0.5, True, 0, True, 3, 0.5,
                              False, args.cuda)
 
+    priorbox = PriorBox(cfg)
+    with torch.no_grad():
+        priors = priorbox.forward()
+        priors = priors.cuda()
+    
     net.train()
     # loss counters
     loc_loss = 0
@@ -179,7 +177,7 @@ def train():
         out = net(images)
         # backprop
         optimizer.zero_grad()
-        loss_l, loss_c = criterion(out, targets)
+        loss_l, loss_c = criterion(out, priors, targets)
         loss = loss_l + loss_c
         loss.backward()
         optimizer.step()

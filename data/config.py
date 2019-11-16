@@ -1,8 +1,4 @@
 # config.py
-import os.path
-
-# gets home dir cross platform
-HOME = os.path.expanduser("~")
 
 # for making bounding boxes pretty
 COLORS = ((255, 0, 0, 128), (0, 255, 0, 128), (0, 0, 255, 128),
@@ -12,6 +8,7 @@ MEANS = (104, 117, 123)
 
 # SSD300 CONFIGS
 voc = {
+    'voc_root':'/home/robin/datasets/voc/VOCdevkit',
     'num_classes': 21,
     'lr_steps': (80000, 100000, 120000),
     'max_iter': 120000,
@@ -27,6 +24,7 @@ voc = {
 }
 
 coco = {
+    'coco_root': '/home/robin/datasets/coco',
     'num_classes': 201,
     'lr_steps': (280000, 360000, 400000),
     'max_iter': 400000,

@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from layers import *
+from layers.modules import L2Norm
+from layers.functions import Detect
 from data import voc, coco
 import os
 
@@ -30,8 +31,6 @@ class SSD(nn.Module):
         self.phase = phase
         self.num_classes = num_classes
         self.cfg = (coco, voc)[num_classes == 21]
-        self.priorbox = PriorBox(self.cfg)
-        self.priors = Variable(self.priorbox.forward(), requires_grad=False)
         self.size = size
 
         # SSD network
@@ -65,7 +64,6 @@ class SSD(nn.Module):
                 list of concat outputs from:
                     1: confidence layers, Shape: [batch*num_priors,num_classes]
                     2: localization layers, Shape: [batch,num_priors*4]
-                    3: priorbox layers, Shape: [2,num_priors*4]
         """
         sources = list() #  这个列表存储的是参与预测的卷积层的输出, 也就是原文中那6个指定的卷积层
         loc = list() #  用于存储预测的边框信息
@@ -108,13 +106,11 @@ class SSD(nn.Module):
                 loc.view(loc.size(0), -1, 4),                   # loc preds
                 self.softmax(conf.view(conf.size(0), -1,
                              self.num_classes)),                # conf preds
-                self.priors.type(type(x.data))                  # default boxes
             )
         else:
             output = (
                 loc.view(loc.size(0), -1, 4),
                 conf.view(conf.size(0), -1, self.num_classes),
-                self.priors
             )
         return output
 
@@ -184,7 +180,6 @@ def add_extras(cfg, i, batch_norm=False):
     return layers
 
 
-
 def multibox(vgg, extra_layers, cfg, num_classes):
     """
     multibox(...) 总共有4个参数, 现在我们已经得到了两个参数, 分别是vgg(...)
@@ -239,7 +234,6 @@ def build_ssd(phase, size=300, num_classes=21):
                                      add_extras(extras[str(size)], 1024),
                                      mbox[str(size)], num_classes)
     return SSD(phase, size, base_, extras_, head_, num_classes)
-
 
 
 if __name__=='__main__':
