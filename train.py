@@ -20,7 +20,6 @@ from layers.functions.prior_box import PriorBox
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
 
-
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
 train_set = parser.add_mutually_exclusive_group()
