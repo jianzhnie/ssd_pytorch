@@ -36,6 +36,8 @@ parser.add_argument('--batch_size', default=32, type=int,
                     help='Batch size for training')
 parser.add_argument('--pretrained', default=True, type=str,
                     help='use pre-trained model')
+parser.add_argument('--distributed', default=True, type=str,
+                    help='use distribute training')
 parser.add_argument('--resume', default=None, type=str,
                     help='Checkpoint state_dict file to resume training from')
 parser.add_argument("--local_rank", default=0, type=int)
@@ -49,7 +51,7 @@ parser.add_argument('--weight_decay', default=5e-4, type=float,
                     help='Weight decay for SGD')
 parser.add_argument('--print-freq', '-p', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
-parser.add_argument('--save_folder', default='weights',
+parser.add_argument('--save_folder', default='weights/',
                     help='Directory for saving checkpoint models')
 
 
@@ -154,11 +156,10 @@ def main():
             minmum_loss = min(loss, minmum_loss)
             save_checkpoint({
                 'epoch': epoch + 1,
-                'arch': args.arch,
                 'state_dict': model.state_dict(),
                 'best_prec1': minmum_loss,
                 'optimizer': optimizer.state_dict(),
-            }, is_best, epoch, args)
+            }, is_best, epoch)
         epoch_time = time.time() -end
         print('Epoch %s time cost %f' %(epoch, epoch_time))
 
@@ -286,8 +287,8 @@ def weights_init(m):
         xavier(m.weight.data)
         m.bias.data.zero_()
 
-def save_checkpoint(state, is_best, epoch, args):
-    filename = os.path.join(args.save_folder, "_" + str(epoch)+ ".pth")
+def save_checkpoint(state, is_best, epoch):
+    filename = os.path.join(args.save_folder, "ssd300_" + str(epoch)+ ".pth")
     torch.save(state, filename)
     if is_best:
         shutil.copyfile(filename, os.path.join(args.save_folder, 'model_best.pth'))
