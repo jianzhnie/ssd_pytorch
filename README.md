@@ -10,9 +10,6 @@ A [PyTorch](http://pytorch.org/) implementation of [Single Shot MultiBox Detecto
 
 - [SSD(Single Shot MultiBox Detector)笔记](https://oldpan.me/archives/ssdsingle-shot-multibox-detector-note)
 
-&nbsp;
-&nbsp;
-
 <img align="right" src= "https://github.com/amdegroot/ssd.pytorch/blob/master/doc/ssd.png" height = 400/>
 
 ### Table of Contents
