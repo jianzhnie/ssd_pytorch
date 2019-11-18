@@ -4,6 +4,8 @@ A [PyTorch](http://pytorch.org/) implementation of [Single Shot MultiBox Detecto
 ### Some blogs help to understand the ssd model and code
 - [SSD 源码实现 (PyTorch)](https://hellozhaozheng.github.io/z_post/PyTorch-SSD/)
 
+- [目标检测-SSD-Single Shot MultiBox Detector-论文笔记](https://arleyzhang.github.io/articles/786f1ca3/)
+
 - [SSD中Multibox_loss源码解读，Pytorch版](https://zhuanlan.zhihu.com/p/77868999)
 
 - [目标检测|SSD原理与实现](https://zhuanlan.zhihu.com/p/33544892)
