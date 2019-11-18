@@ -63,11 +63,14 @@ args.distributed = False
 if 'WORLD_SIZE' in os.environ:
     args.distributed = int(os.environ['WORLD_SIZE']) > 1
 
+if not os.path.exists(args.save_folder):
+    os.mkdir(args.save_folder)
+
 def main():
     global args
     global minmum_loss
     args.gpu = 0
-    args.world_size = 0
+    args.world_size = 1
 
     if args.distributed:
         args.gpu = args.local_rank % torch.cuda.device_count()
@@ -77,9 +80,6 @@ def main():
         args.world_size = torch.distributed.get_world_size()
 
     args.total_batch_size = args.world_size * args.batch_size
-
-    if not os.path.exists(args.save_folder):
-        os.mkdir(args.save_folder)
 
     ## DATA loading code
     if args.dataset == 'COCO':
@@ -145,7 +145,6 @@ def main():
     
     print('Using the specified args:')
     print(args)
-
     for epoch in range(args.start_epoch, args.epochs):
         # train for one epoch
         end = time.time()
@@ -175,7 +174,7 @@ def train(train_loader, model, priors, criterion, optimizer, epoch):
     model.train()
     end = time.time()
 
-    for i, data in enumerate(train_loader):
+    for i, data in enumerate(train_loader,1):
         input, targets = data
         train_loader_len = len(train_loader)
 
